@@ -6,7 +6,7 @@ services:
     restart: unless-stopped
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - trivy-cache:/root/.cache/trivy
+      - vib-trivy-cache:/root/.cache/trivy
     environment:
       - VICTORIAMETRICS_URL=${VICTORIAMETRICS_URL:-http://vib-victoriametrics:8428}
       - SCAN_INTERVAL_HOURS=${SCAN_INTERVAL_HOURS:-6}
@@ -29,7 +29,7 @@ services:
     ports:
       - "${VICTORIAMETRICS_PORT:-8429}:8428"
     volumes:
-      - victoriametrics-data:/storage
+      - vib-victoriametrics-data:/storage
     command:
       - --storageDataPath=/storage
       - --retentionPeriod=${VICTORIAMETRICS_RETENTION:-90d}
@@ -49,7 +49,7 @@ services:
       - GF_USERS_ALLOW_SIGN_UP=false
       - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/etc/grafana/dashboards/vib-overview.json
     volumes:
-      - grafana-data:/var/lib/grafana
+      - vib-grafana-data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - ./grafana/dashboards:/etc/grafana/dashboards:ro
     networks:
@@ -62,6 +62,6 @@ networks:
     name: vib
 
 volumes:
-  victoriametrics-data:
-  grafana-data:
-  trivy-cache:
+  vib-victoriametrics-data:
+  vib-grafana-data:
+  vib-trivy-cache:
