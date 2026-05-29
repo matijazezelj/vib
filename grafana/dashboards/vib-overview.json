@@ -28,7 +28,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "vib-vm" },
-          "expr": "sum(vib_vulnerabilities_total{severity=\"CRITICAL\"})",
+          "expr": "sum(last_over_time(vib_vulnerabilities_total{severity=\"CRITICAL\"}[8h]))",
           "legendFormat": "Critical",
           "refId": "A"
         }
@@ -53,7 +53,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "vib-vm" },
-          "expr": "sum(vib_vulnerabilities_total{severity=\"HIGH\"})",
+          "expr": "sum(last_over_time(vib_vulnerabilities_total{severity=\"HIGH\"}[8h]))",
           "legendFormat": "High",
           "refId": "A"
         }
@@ -78,7 +78,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "vib-vm" },
-          "expr": "sum(vib_vulnerabilities_total{severity=\"MEDIUM\"})",
+          "expr": "sum(last_over_time(vib_vulnerabilities_total{severity=\"MEDIUM\"}[8h]))",
           "legendFormat": "Medium",
           "refId": "A"
         }
@@ -103,7 +103,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "vib-vm" },
-          "expr": "vib_images_scanned_total",
+          "expr": "last_over_time(vib_images_scanned_total[8h])",
           "legendFormat": "Images",
           "refId": "A"
         }
@@ -207,25 +207,25 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "vib-vm" },
-          "expr": "sum(vib_vulnerabilities_total{severity=\"CRITICAL\"})",
+          "expr": "sum(last_over_time(vib_vulnerabilities_total{severity=\"CRITICAL\"}[8h]))",
           "legendFormat": "CRITICAL",
           "refId": "A"
         },
         {
           "datasource": { "type": "prometheus", "uid": "vib-vm" },
-          "expr": "sum(vib_vulnerabilities_total{severity=\"HIGH\"})",
+          "expr": "sum(last_over_time(vib_vulnerabilities_total{severity=\"HIGH\"}[8h]))",
           "legendFormat": "HIGH",
           "refId": "B"
         },
         {
           "datasource": { "type": "prometheus", "uid": "vib-vm" },
-          "expr": "sum(vib_vulnerabilities_total{severity=\"MEDIUM\"})",
+          "expr": "sum(last_over_time(vib_vulnerabilities_total{severity=\"MEDIUM\"}[8h]))",
           "legendFormat": "MEDIUM",
           "refId": "C"
         },
         {
           "datasource": { "type": "prometheus", "uid": "vib-vm" },
-          "expr": "sum(vib_vulnerabilities_total{severity=\"LOW\"})",
+          "expr": "sum(last_over_time(vib_vulnerabilities_total{severity=\"LOW\"}[8h]))",
           "legendFormat": "LOW",
           "refId": "D"
         }
@@ -256,7 +256,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "vib-vm" },
-          "expr": "sum(vib_image_vulnerabilities_total) by (image)",
+          "expr": "sum(last_over_time(vib_image_vulnerabilities_total[8h])) by (image)",
           "format": "table",
           "instant": true,
           "legendFormat": "Total",
@@ -264,7 +264,7 @@
         },
         {
           "datasource": { "type": "prometheus", "uid": "vib-vm" },
-          "expr": "sum(vib_vulnerabilities_total{severity=\"CRITICAL\"}) by (image)",
+          "expr": "sum(last_over_time(vib_vulnerabilities_total{severity=\"CRITICAL\"}[8h])) by (image)",
           "format": "table",
           "instant": true,
           "legendFormat": "Critical",
@@ -272,7 +272,7 @@
         },
         {
           "datasource": { "type": "prometheus", "uid": "vib-vm" },
-          "expr": "sum(vib_vulnerabilities_total{severity=\"HIGH\"}) by (image)",
+          "expr": "sum(last_over_time(vib_vulnerabilities_total{severity=\"HIGH\"}[8h])) by (image)",
           "format": "table",
           "instant": true,
           "legendFormat": "High",
@@ -317,7 +317,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "vib-vm" },
-          "expr": "vib_cve_info{severity=~\"CRITICAL|HIGH\"}",
+          "expr": "last_over_time(vib_cve_info{severity=~\"CRITICAL|HIGH\"}[8h])",
           "format": "table",
           "instant": true,
           "legendFormat": "",
