@@ -1,0 +1,382 @@
+{
+  "__inputs": [],
+  "__requires": [],
+  "annotations": { "list": [] },
+  "description": "VIB — Vulnerability in a Box: CVE overview across all scanned container images",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": { "type": "prometheus", "uid": "vib-vm" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "fixedColor": "#F2495C", "mode": "fixed" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }] },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 },
+      "id": 1,
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "title": "Critical CVEs",
+      "type": "stat",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "vib-vm" },
+          "expr": "sum(vib_vulnerabilities_total{severity=\"CRITICAL\"})",
+          "legendFormat": "Critical",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "vib-vm" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "fixedColor": "#FF9830", "mode": "fixed" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "orange", "value": null }] },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 0 },
+      "id": 2,
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "title": "High CVEs",
+      "type": "stat",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "vib-vm" },
+          "expr": "sum(vib_vulnerabilities_total{severity=\"HIGH\"})",
+          "legendFormat": "High",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "vib-vm" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "fixedColor": "#FADE2A", "mode": "fixed" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "yellow", "value": null }] },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 0 },
+      "id": 3,
+      "options": { "colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "title": "Medium CVEs",
+      "type": "stat",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "vib-vm" },
+          "expr": "sum(vib_vulnerabilities_total{severity=\"MEDIUM\"})",
+          "legendFormat": "Medium",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "vib-vm" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "fixedColor": "#73BF69", "mode": "fixed" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 0 },
+      "id": 4,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "title": "Images Scanned",
+      "type": "stat",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "vib-vm" },
+          "expr": "vib_images_scanned_total",
+          "legendFormat": "Images",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "vib-vm" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "dateTimeAsLocal"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 0 },
+      "id": 5,
+      "options": { "colorMode": "value", "graphMode": "none", "justifyMode": "center", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
+      "title": "Last Scan",
+      "type": "stat",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "vib-vm" },
+          "expr": "vib_last_scan_timestamp * 1000",
+          "legendFormat": "Last Scan",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "vib-vm" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "axisBorderShow": false, "axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 15, "gradientMode": "none", "hideFrom": { "legend": false, "tooltip": false, "viz": false }, "lineInterpolation": "smooth", "lineWidth": 2, "pointSize": 5, "scaleDistribution": { "type": "linear" }, "showPoints": "auto", "spanNulls": true, "stacking": { "group": "A", "mode": "none" }, "thresholdsStyle": { "mode": "off" } },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "short"
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "CRITICAL" }, "properties": [{ "id": "color", "value": { "fixedColor": "#F2495C", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "HIGH" }, "properties": [{ "id": "color", "value": { "fixedColor": "#FF9830", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "MEDIUM" }, "properties": [{ "id": "color", "value": { "fixedColor": "#FADE2A", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "LOW" }, "properties": [{ "id": "color", "value": { "fixedColor": "#73BF69", "mode": "fixed" } }] }
+        ]
+      },
+      "gridPos": { "h": 9, "w": 16, "x": 0, "y": 4 },
+      "id": 6,
+      "options": { "legend": { "calcs": ["last"], "displayMode": "table", "placement": "right", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "title": "Vulnerability Trend by Severity",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "vib-vm" },
+          "expr": "sum(vib_vulnerabilities_total{severity=\"CRITICAL\"}) by (severity)",
+          "legendFormat": "CRITICAL",
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "vib-vm" },
+          "expr": "sum(vib_vulnerabilities_total{severity=\"HIGH\"}) by (severity)",
+          "legendFormat": "HIGH",
+          "refId": "B"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "vib-vm" },
+          "expr": "sum(vib_vulnerabilities_total{severity=\"MEDIUM\"}) by (severity)",
+          "legendFormat": "MEDIUM",
+          "refId": "C"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "vib-vm" },
+          "expr": "sum(vib_vulnerabilities_total{severity=\"LOW\"}) by (severity)",
+          "legendFormat": "LOW",
+          "refId": "D"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "vib-vm" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "hideFrom": { "legend": false, "tooltip": false, "viz": false } },
+          "mappings": [],
+          "unit": "short"
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "CRITICAL" }, "properties": [{ "id": "color", "value": { "fixedColor": "#F2495C", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "HIGH" }, "properties": [{ "id": "color", "value": { "fixedColor": "#FF9830", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "MEDIUM" }, "properties": [{ "id": "color", "value": { "fixedColor": "#FADE2A", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "LOW" }, "properties": [{ "id": "color", "value": { "fixedColor": "#73BF69", "mode": "fixed" } }] }
+        ]
+      },
+      "gridPos": { "h": 9, "w": 8, "x": 16, "y": 4 },
+      "id": 7,
+      "options": { "displayLabels": ["percent"], "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true, "values": ["value", "percent"] }, "pieType": "donut", "tooltip": { "mode": "single", "sort": "none" } },
+      "title": "CVE Severity Distribution",
+      "type": "piechart",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "vib-vm" },
+          "expr": "sum(vib_vulnerabilities_total{severity=\"CRITICAL\"})",
+          "legendFormat": "CRITICAL",
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "vib-vm" },
+          "expr": "sum(vib_vulnerabilities_total{severity=\"HIGH\"})",
+          "legendFormat": "HIGH",
+          "refId": "B"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "vib-vm" },
+          "expr": "sum(vib_vulnerabilities_total{severity=\"MEDIUM\"})",
+          "legendFormat": "MEDIUM",
+          "refId": "C"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "vib-vm" },
+          "expr": "sum(vib_vulnerabilities_total{severity=\"LOW\"})",
+          "legendFormat": "LOW",
+          "refId": "D"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "vib-vm" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "custom": { "align": "auto", "cellOptions": { "type": "auto" }, "filterable": true, "inspect": false },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 5 }, { "color": "orange", "value": 20 }, { "color": "red", "value": 50 }] },
+          "unit": "short"
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Image" }, "properties": [{ "id": "custom.width", "value": 300 }] },
+          { "matcher": { "id": "byName", "options": "Total" }, "properties": [{ "id": "custom.displayMode", "value": "color-background" }, { "id": "custom.width", "value": 80 }] },
+          { "matcher": { "id": "byName", "options": "Critical" }, "properties": [{ "id": "custom.width", "value": 80 }, { "id": "color", "value": { "fixedColor": "#F2495C", "mode": "fixed" } }, { "id": "custom.displayMode", "value": "color-text" }] },
+          { "matcher": { "id": "byName", "options": "High" }, "properties": [{ "id": "custom.width", "value": 80 }, { "id": "color", "value": { "fixedColor": "#FF9830", "mode": "fixed" } }, { "id": "custom.displayMode", "value": "color-text" }] }
+        ]
+      },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 13 },
+      "id": 8,
+      "options": { "cellHeight": "sm", "footer": { "countRows": false, "fields": "", "reducer": ["sum"], "show": false }, "showHeader": true, "sortBy": [{ "desc": true, "displayName": "Critical" }] },
+      "title": "Vulnerabilities per Image",
+      "type": "table",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "vib-vm" },
+          "expr": "sum(vib_image_vulnerabilities_total) by (image)",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "Total",
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "vib-vm" },
+          "expr": "sum(vib_vulnerabilities_total{severity=\"CRITICAL\"}) by (image)",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "Critical",
+          "refId": "B"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "vib-vm" },
+          "expr": "sum(vib_vulnerabilities_total{severity=\"HIGH\"}) by (image)",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "High",
+          "refId": "C"
+        }
+      ],
+      "transformations": [
+        { "id": "merge", "options": {} },
+        { "id": "organize", "options": { "excludeByName": { "Time": true, "__name__": true, "job": true }, "renameByName": { "Value #A": "Total", "Value #B": "Critical", "Value #C": "High", "image": "Image" } } }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "vib-vm" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "custom": { "align": "auto", "cellOptions": { "type": "auto" }, "filterable": true, "inspect": false },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 4 },
+              { "color": "orange", "value": 7 },
+              { "color": "red", "value": 9 }
+            ]
+          }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Image" }, "properties": [{ "id": "custom.width", "value": 250 }] },
+          { "matcher": { "id": "byName", "options": "CVE ID" }, "properties": [{ "id": "custom.width", "value": 160 }, { "id": "links", "value": [{ "targetBlank": true, "title": "NVD", "url": "https://nvd.nist.gov/vuln/detail/${__value.raw}" }] }] },
+          { "matcher": { "id": "byName", "options": "Severity" }, "properties": [{ "id": "custom.width", "value": 90 }, { "id": "custom.displayMode", "value": "color-background" }] },
+          { "matcher": { "id": "byName", "options": "CVSS" }, "properties": [{ "id": "custom.width", "value": 70 }, { "id": "custom.displayMode", "value": "color-background" }, { "id": "decimals", "value": 1 }] },
+          { "matcher": { "id": "byName", "options": "Has Fix" }, "properties": [{ "id": "custom.width", "value": 80 }] }
+        ]
+      },
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 23 },
+      "id": 9,
+      "options": { "cellHeight": "sm", "footer": { "countRows": false, "fields": "", "reducer": ["sum"], "show": false }, "showHeader": true, "sortBy": [{ "desc": true, "displayName": "CVSS" }] },
+      "title": "Critical & High CVEs",
+      "type": "table",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "vib-vm" },
+          "expr": "vib_cve_info{severity=~\"CRITICAL|HIGH\"}",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "",
+          "refId": "A"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Time": true, "__name__": true, "job": true, "instance": true },
+            "renameByName": {
+              "image": "Image",
+              "cve_id": "CVE ID",
+              "package": "Package",
+              "severity": "Severity",
+              "has_fix": "Has Fix",
+              "Value": "CVSS"
+            },
+            "indexByName": {
+              "image": 0,
+              "cve_id": 1,
+              "package": 2,
+              "severity": 3,
+              "Value": 4,
+              "has_fix": 5
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "refresh": "5m",
+  "schemaVersion": 39,
+  "tags": ["vib", "security", "vulnerabilities", "cve"],
+  "templating": {
+    "list": [
+      {
+        "current": { "selected": false, "text": "All", "value": "$__all" },
+        "datasource": { "type": "prometheus", "uid": "vib-vm" },
+        "definition": "label_values(vib_vulnerabilities_total, image)",
+        "hide": 0,
+        "includeAll": true,
+        "multi": true,
+        "name": "image",
+        "options": [],
+        "query": { "query": "label_values(vib_vulnerabilities_total, image)", "refId": "StandardVariableQuery" },
+        "refresh": 2,
+        "regex": "",
+        "sort": 1,
+        "type": "query",
+        "label": "Image"
+      }
+    ]
+  },
+  "time": { "from": "now-7d", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "VIB — Vulnerability Overview",
+  "uid": "vib-overview",
+  "version": 1
+}
