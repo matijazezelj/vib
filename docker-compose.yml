@@ -23,7 +23,7 @@ services:
       - vib-victoriametrics
 
   vib-victoriametrics:
-    image: victoriametrics/victoria-metrics:stable
+    image: victoriametrics/victoria-metrics:latest
     container_name: vib-victoriametrics
     restart: unless-stopped
     ports:
