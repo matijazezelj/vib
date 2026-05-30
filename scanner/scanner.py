@@ -8,6 +8,7 @@ pushes CVE metrics to VictoriaMetrics, and optionally feeds findings into AIB.
 import json
 import logging
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -25,13 +26,23 @@ logging.basicConfig(
 )
 logger = logging.getLogger("vib")
 
+_shutdown = False
+
+
+def _handle_sigterm(signum, frame):
+    global _shutdown
+    _shutdown = True
+
+
+signal.signal(signal.SIGTERM, _handle_sigterm)
+
 # ── Config ──────────────────────────────────────────────────────────────────
 
 VICTORIAMETRICS_URL = os.environ.get("VICTORIAMETRICS_URL", "http://vib-victoriametrics:8428")
 SCAN_INTERVAL_HOURS = float(os.environ.get("SCAN_INTERVAL_HOURS", "6"))
 SCAN_ON_STARTUP = os.environ.get("SCAN_ON_STARTUP", "true").lower() == "true"
 SEVERITY_FILTER = os.environ.get("SEVERITY_FILTER", "UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL")
-TRIVY_TIMEOUT = os.environ.get("TRIVY_TIMEOUT", "300")
+TRIVY_TIMEOUT = int(os.environ.get("TRIVY_TIMEOUT", "300"))
 IGNORE_UNFIXED = os.environ.get("IGNORE_UNFIXED", "false").lower() == "true"
 
 AIB_BASE_URL = os.environ.get("AIB_BASE_URL", "").rstrip("/")
@@ -60,15 +71,23 @@ def _parse_docker_hosts() -> list[tuple[str, str]]:
     raw = os.environ.get("DOCKER_HOSTS", "").strip()
     if raw:
         hosts = []
+        valid_schemes = ("tcp://", "unix://", "ssh://", "npipe://")
         for entry in raw.split(","):
             entry = entry.strip()
             if not entry:
                 continue
             if "=" in entry:
                 name, url = entry.split("=", 1)
-                hosts.append((name.strip(), url.strip()))
+                name, url = name.strip(), url.strip()
             else:
-                hosts.append(("docker", entry.strip()))
+                name, url = "docker", entry.strip()
+            if not name or not url:
+                logger.warning("Skipping DOCKER_HOSTS entry with empty name or url: %r", entry)
+                continue
+            if not url.startswith(valid_schemes):
+                logger.warning("Skipping DOCKER_HOSTS entry with invalid scheme: %r", entry)
+                continue
+            hosts.append((name, url))
         return hosts
     if DOCKER_HOST:
         return [("docker", DOCKER_HOST)]
@@ -104,7 +123,7 @@ def scan_image(image: str, docker_url: str = "") -> Optional[dict]:
             cmd,
             capture_output=True,
             text=True,
-            timeout=int(TRIVY_TIMEOUT) + 30,
+            timeout=TRIVY_TIMEOUT + 30,
         )
         if result.returncode not in (0, 1):  # trivy exits 1 when vulns found
             logger.warning("Trivy exited %d for %s: %s", result.returncode, image, result.stderr[:300])
@@ -151,16 +170,16 @@ def _extract_cvss(v: dict) -> float:
     scores = []
     for source in cvss.values():
         for key in ("V3Score", "V2Score"):
-            if score := source.get(key):
+            if (score := source.get(key)) is not None:
                 scores.append(float(score))
     return max(scores) if scores else 0.0
 
 
 # ── Metrics push ─────────────────────────────────────────────────────────────
 
-def _safe_label(s: str) -> str:
+def _safe_label(value: str) -> str:
     """Escape characters that break Prometheus label values."""
-    return s.replace('"', '\\"').replace("\n", "").replace("\\", "\\\\")
+    return value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
 
 
 def push_metrics(image: str, vulns: list[dict], scan_ts: float, host: str = "local") -> None:
@@ -201,17 +220,22 @@ def push_metrics(image: str, vulns: list[dict], scan_ts: float, host: str = "loc
     lines.append(f'vib_image_vulnerabilities_total{{image="{safe_image}",host="{safe_host}"}} {len(vulns)} {ts_ms}')
 
     payload = "\n".join(lines)
-    try:
-        resp = requests.post(
-            f"{VICTORIAMETRICS_URL}/api/v1/import/prometheus",
-            data=payload,
-            headers={"Content-Type": "text/plain"},
-            timeout=10,
-        )
-        resp.raise_for_status()
-        logger.info("Pushed %d metric lines for %s", len(lines), image)
-    except Exception as e:
-        logger.error("Failed to push metrics for %s: %s", image, e)
+    for attempt in range(2):
+        try:
+            resp = requests.post(
+                f"{VICTORIAMETRICS_URL}/api/v1/import/prometheus",
+                data=payload,
+                headers={"Content-Type": "text/plain"},
+                timeout=10,
+            )
+            resp.raise_for_status()
+            logger.info("Pushed %d metric lines for %s", len(lines), image)
+            break
+        except Exception as e:
+            if attempt == 0:
+                time.sleep(2)
+            else:
+                logger.error("Failed to push metrics for %s after retry: %s", image, e)
 
 
 def push_scan_summary(images_scanned: int, total_vulns: int, scan_ts: float) -> None:
@@ -222,15 +246,21 @@ def push_scan_summary(images_scanned: int, total_vulns: int, scan_ts: float) -> 
         f"vib_total_vulnerabilities {total_vulns} {ts_ms}",
         f"vib_last_scan_timestamp {scan_ts} {ts_ms}",
     ])
-    try:
-        requests.post(
-            f"{VICTORIAMETRICS_URL}/api/v1/import/prometheus",
-            data=payload,
-            headers={"Content-Type": "text/plain"},
-            timeout=10,
-        ).raise_for_status()
-    except Exception as e:
-        logger.error("Failed to push scan summary: %s", e)
+    for attempt in range(2):
+        try:
+            resp = requests.post(
+                f"{VICTORIAMETRICS_URL}/api/v1/import/prometheus",
+                data=payload,
+                headers={"Content-Type": "text/plain"},
+                timeout=10,
+            )
+            resp.raise_for_status()
+            break
+        except Exception as e:
+            if attempt == 0:
+                time.sleep(2)
+            else:
+                logger.error("Failed to push scan summary after retry: %s", e)
 
 
 # ── Docker image discovery ────────────────────────────────────────────────────
@@ -241,8 +271,13 @@ def discover_images(docker_url: str = "") -> list[str]:
         client = _docker_client(docker_url)
         images = set()
         for container in client.containers.list():
-            image = container.image.tags[0] if container.image.tags else container.image.id
-            images.add(image)
+            try:
+                if container.image and container.image.tags:
+                    images.add(container.image.tags[0])
+                elif container.image:
+                    images.add(container.image.id)
+            except Exception:
+                continue
         logger.info("Discovered %d running images", len(images))
         return sorted(images)
     except Exception as e:
@@ -304,7 +339,7 @@ def run_scan() -> None:
 
     for host_name, docker_url in hosts:
         logger.info("── Host: %s (%s) ──", host_name, docker_url or "local socket")
-        images = discover_images(docker_url) + ADDITIONAL_IMAGES
+        images = discover_images(docker_url)
         images = list(dict.fromkeys(images))
 
         if not images:
@@ -321,6 +356,25 @@ def run_scan() -> None:
             images_scanned += 1
 
             push_metrics(image, vulns, scan_ts, host=host_name)
+            report_to_aib(image, vulns)
+
+            crit = sum(1 for v in vulns if v["severity"] == "CRITICAL")
+            high = sum(1 for v in vulns if v["severity"] == "HIGH")
+            logger.info("  %s — %d vulns (%d critical, %d high)", image, len(vulns), crit, high)
+
+    # Scan ADDITIONAL_IMAGES once, outside the per-host loop, under "additional" host label
+    if ADDITIONAL_IMAGES:
+        logger.info("── Host: additional (extra images) ──")
+        for image in ADDITIONAL_IMAGES:
+            result = scan_image(image, "")
+            if result is None:
+                continue
+
+            vulns = extract_vulnerabilities(result)
+            total_vulns += len(vulns)
+            images_scanned += 1
+
+            push_metrics(image, vulns, scan_ts, host="additional")
             report_to_aib(image, vulns)
 
             crit = sum(1 for v in vulns if v["severity"] == "CRITICAL")
@@ -345,6 +399,9 @@ def main() -> None:
     schedule.every(SCAN_INTERVAL_HOURS).hours.do(run_scan)
 
     while True:
+        if _shutdown:
+            logger.info("SIGTERM received, exiting.")
+            break
         schedule.run_pending()
         time.sleep(30)
 
