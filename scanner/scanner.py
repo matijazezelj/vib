@@ -37,8 +37,7 @@ IGNORE_UNFIXED = os.environ.get("IGNORE_UNFIXED", "false").lower() == "true"
 AIB_BASE_URL = os.environ.get("AIB_BASE_URL", "").rstrip("/")
 AIB_API_TOKEN = os.environ.get("AIB_API_TOKEN", "")
 
-# Remote Docker host — set to tcp://host:port to scan a remote daemon
-# Defaults to local Unix socket (docker.from_env() / trivy default behaviour)
+# Single remote host (backwards-compat). Prefer DOCKER_HOSTS for multi-host.
 DOCKER_HOST = os.environ.get("DOCKER_HOST", "")
 
 ADDITIONAL_IMAGES = [
@@ -47,9 +46,44 @@ ADDITIONAL_IMAGES = [
     if img.strip()
 ]
 
+
+# ── Multi-host parsing ────────────────────────────────────────────────────────
+
+def _parse_docker_hosts() -> list[tuple[str, str]]:
+    """Return list of (name, docker_url) to scan.
+
+    Priority:
+      1. DOCKER_HOSTS=name1=tcp://host1:port1,name2=tcp://host2:port2
+      2. DOCKER_HOST=tcp://host:port  (single host, name="docker")
+      3. local socket                 (name="local", url="")
+    """
+    raw = os.environ.get("DOCKER_HOSTS", "").strip()
+    if raw:
+        hosts = []
+        for entry in raw.split(","):
+            entry = entry.strip()
+            if not entry:
+                continue
+            if "=" in entry:
+                name, url = entry.split("=", 1)
+                hosts.append((name.strip(), url.strip()))
+            else:
+                hosts.append(("docker", entry.strip()))
+        return hosts
+    if DOCKER_HOST:
+        return [("docker", DOCKER_HOST)]
+    return [("local", "")]
+
+
+# ── Docker client helper ──────────────────────────────────────────────────────
+
+def _docker_client(docker_url: str) -> docker.DockerClient:
+    return docker.DockerClient(base_url=docker_url) if docker_url else docker.from_env()
+
+
 # ── Trivy scanning ───────────────────────────────────────────────────────────
 
-def scan_image(image: str) -> Optional[dict]:
+def scan_image(image: str, docker_url: str = "") -> Optional[dict]:
     """Run trivy against an image, return parsed JSON or None on failure."""
     cmd = [
         "trivy", "image",
@@ -58,8 +92,8 @@ def scan_image(image: str) -> Optional[dict]:
         "--severity", SEVERITY_FILTER,
         "--quiet",
     ]
-    if DOCKER_HOST:
-        cmd.extend(["--docker-host", DOCKER_HOST])
+    if docker_url:
+        cmd.extend(["--docker-host", docker_url])
     if IGNORE_UNFIXED:
         cmd.append("--ignore-unfixed")
     cmd.append(image)
@@ -124,13 +158,18 @@ def _extract_cvss(v: dict) -> float:
 
 # ── Metrics push ─────────────────────────────────────────────────────────────
 
-def push_metrics(image: str, vulns: list[dict], scan_ts: float) -> None:
+def _safe_label(s: str) -> str:
+    """Escape characters that break Prometheus label values."""
+    return s.replace('"', '\\"').replace("\n", "").replace("\\", "\\\\")
+
+
+def push_metrics(image: str, vulns: list[dict], scan_ts: float, host: str = "local") -> None:
     """Push scan results to VictoriaMetrics in Prometheus line format."""
     lines = []
     ts_ms = int(scan_ts * 1000)
 
     # Aggregate counts by severity
-    severity_counts: dict[str, dict] = {}
+    severity_counts: dict[str, int] = {}
     for v in vulns:
         sev = v["severity"]
         has_fix = "true" if v["has_fix"] else "false"
@@ -138,11 +177,12 @@ def push_metrics(image: str, vulns: list[dict], scan_ts: float) -> None:
         severity_counts[key] = severity_counts.get(key, 0) + 1
 
     safe_image = _safe_label(image)
+    safe_host = _safe_label(host)
 
     for (sev, has_fix), count in severity_counts.items():
         lines.append(
-            f'vib_vulnerabilities_total{{image="{safe_image}",severity="{sev}",has_fix="{has_fix}"}} '
-            f"{count} {ts_ms}"
+            f'vib_vulnerabilities_total{{image="{safe_image}",severity="{sev}",'
+            f'has_fix="{has_fix}",host="{safe_host}"}} {count} {ts_ms}'
         )
 
     # Per-CVE info metric (value = CVSS score or 1)
@@ -154,13 +194,11 @@ def push_metrics(image: str, vulns: list[dict], scan_ts: float) -> None:
         score = v["cvss_score"] or 1.0
         lines.append(
             f'vib_cve_info{{image="{safe_image}",cve_id="{cve}",package="{pkg}",'
-            f'severity="{sev}",has_fix="{has_fix}"}} {score} {ts_ms}'
+            f'severity="{sev}",has_fix="{has_fix}",host="{safe_host}"}} {score} {ts_ms}'
         )
 
-    # Scan timestamp
-    lines.append(f'vib_scan_timestamp{{image="{safe_image}"}} {scan_ts} {ts_ms}')
-    # Total vuln count for this image
-    lines.append(f'vib_image_vulnerabilities_total{{image="{safe_image}"}} {len(vulns)} {ts_ms}')
+    lines.append(f'vib_scan_timestamp{{image="{safe_image}",host="{safe_host}"}} {scan_ts} {ts_ms}')
+    lines.append(f'vib_image_vulnerabilities_total{{image="{safe_image}",host="{safe_host}"}} {len(vulns)} {ts_ms}')
 
     payload = "\n".join(lines)
     try:
@@ -177,7 +215,7 @@ def push_metrics(image: str, vulns: list[dict], scan_ts: float) -> None:
 
 
 def push_scan_summary(images_scanned: int, total_vulns: int, scan_ts: float) -> None:
-    """Push overall scan summary metrics."""
+    """Push overall scan summary metrics (aggregated across all hosts)."""
     ts_ms = int(scan_ts * 1000)
     payload = "\n".join([
         f"vib_images_scanned_total {images_scanned} {ts_ms}",
@@ -195,17 +233,12 @@ def push_scan_summary(images_scanned: int, total_vulns: int, scan_ts: float) -> 
         logger.error("Failed to push scan summary: %s", e)
 
 
-def _safe_label(s: str) -> str:
-    """Escape characters that break Prometheus label values."""
-    return s.replace('"', '\\"').replace("\n", "").replace("\\", "\\\\")
-
-
 # ── Docker image discovery ────────────────────────────────────────────────────
 
-def discover_images() -> list[str]:
-    """Return unique image names from all running containers."""
+def discover_images(docker_url: str = "") -> list[str]:
+    """Return unique image names from all running containers on the given host."""
     try:
-        client = docker.from_env()
+        client = _docker_client(docker_url)
         images = set()
         for container in client.containers.list():
             image = container.image.tags[0] if container.image.tags else container.image.id
@@ -213,7 +246,7 @@ def discover_images() -> list[str]:
         logger.info("Discovered %d running images", len(images))
         return sorted(images)
     except Exception as e:
-        logger.warning("Docker discovery failed: %s — check socket mount", e)
+        logger.warning("Docker discovery failed: %s", e)
         return []
 
 
@@ -228,10 +261,6 @@ def report_to_aib(image: str, vulns: list[dict]) -> None:
     if not critical_high:
         return
 
-    # Derive a likely AIB node ID from the image name
-    # e.g. nginx:latest → might be k8s:pod:default/nginx
-    # We can't know for sure without AIB lookup, so we use the resolve endpoint
-    image_name = image.split(":")[0].split("/")[-1]
     headers = {"Content-Type": "application/json"}
     if AIB_API_TOKEN:
         headers["Authorization"] = f"Bearer {AIB_API_TOKEN}"
@@ -268,36 +297,39 @@ def report_to_aib(image: str, vulns: list[dict]) -> None:
 def run_scan() -> None:
     logger.info("─── Starting vulnerability scan ───")
     scan_ts = time.time()
-
-    images = discover_images() + ADDITIONAL_IMAGES
-    images = list(dict.fromkeys(images))  # deduplicate, preserve order
-
-    if not images:
-        logger.warning("No images to scan. Mount /var/run/docker.sock, set DOCKER_HOST, or set ADDITIONAL_IMAGES.")
-        push_scan_summary(0, 0, scan_ts)
-        return
+    hosts = _parse_docker_hosts()
 
     total_vulns = 0
     images_scanned = 0
 
-    for image in images:
-        result = scan_image(image)
-        if result is None:
+    for host_name, docker_url in hosts:
+        logger.info("── Host: %s (%s) ──", host_name, docker_url or "local socket")
+        images = discover_images(docker_url) + ADDITIONAL_IMAGES
+        images = list(dict.fromkeys(images))
+
+        if not images:
+            logger.warning("No images on %s. Check socket/DOCKER_HOSTS or set ADDITIONAL_IMAGES.", host_name)
             continue
 
-        vulns = extract_vulnerabilities(result)
-        total_vulns += len(vulns)
-        images_scanned += 1
+        for image in images:
+            result = scan_image(image, docker_url)
+            if result is None:
+                continue
 
-        push_metrics(image, vulns, scan_ts)
-        report_to_aib(image, vulns)
+            vulns = extract_vulnerabilities(result)
+            total_vulns += len(vulns)
+            images_scanned += 1
 
-        crit = sum(1 for v in vulns if v["severity"] == "CRITICAL")
-        high = sum(1 for v in vulns if v["severity"] == "HIGH")
-        logger.info("  %s — %d vulns (%d critical, %d high)", image, len(vulns), crit, high)
+            push_metrics(image, vulns, scan_ts, host=host_name)
+            report_to_aib(image, vulns)
+
+            crit = sum(1 for v in vulns if v["severity"] == "CRITICAL")
+            high = sum(1 for v in vulns if v["severity"] == "HIGH")
+            logger.info("  %s — %d vulns (%d critical, %d high)", image, len(vulns), crit, high)
 
     push_scan_summary(images_scanned, total_vulns, scan_ts)
-    logger.info("─── Scan complete: %d images, %d vulnerabilities ───", images_scanned, total_vulns)
+    logger.info("─── Scan complete: %d images across %d host(s), %d vulnerabilities ───",
+                images_scanned, len(hosts), total_vulns)
 
 
 def main() -> None:

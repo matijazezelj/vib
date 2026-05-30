@@ -19,6 +19,7 @@ services:
       - AIB_BASE_URL=${AIB_BASE_URL:-}
       - AIB_API_TOKEN=${AIB_API_TOKEN:-}
       - DOCKER_HOST=${DOCKER_HOST:-}
+      - DOCKER_HOSTS=${DOCKER_HOSTS:-}
     networks:
       - vib
     depends_on:
