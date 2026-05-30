@@ -37,6 +37,10 @@ IGNORE_UNFIXED = os.environ.get("IGNORE_UNFIXED", "false").lower() == "true"
 AIB_BASE_URL = os.environ.get("AIB_BASE_URL", "").rstrip("/")
 AIB_API_TOKEN = os.environ.get("AIB_API_TOKEN", "")
 
+# Remote Docker host — set to tcp://host:port to scan a remote daemon
+# Defaults to local Unix socket (docker.from_env() / trivy default behaviour)
+DOCKER_HOST = os.environ.get("DOCKER_HOST", "")
+
 ADDITIONAL_IMAGES = [
     img.strip()
     for img in os.environ.get("ADDITIONAL_IMAGES", "").split(",")
@@ -54,6 +58,8 @@ def scan_image(image: str) -> Optional[dict]:
         "--severity", SEVERITY_FILTER,
         "--quiet",
     ]
+    if DOCKER_HOST:
+        cmd.extend(["--docker-host", DOCKER_HOST])
     if IGNORE_UNFIXED:
         cmd.append("--ignore-unfixed")
     cmd.append(image)
@@ -267,7 +273,7 @@ def run_scan() -> None:
     images = list(dict.fromkeys(images))  # deduplicate, preserve order
 
     if not images:
-        logger.warning("No images to scan. Mount /var/run/docker.sock or set ADDITIONAL_IMAGES.")
+        logger.warning("No images to scan. Mount /var/run/docker.sock, set DOCKER_HOST, or set ADDITIONAL_IMAGES.")
         push_scan_summary(0, 0, scan_ts)
         return
 

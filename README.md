@@ -38,7 +38,7 @@ The first scan starts immediately and completes in 5–15 minutes depending on i
 ## Requirements
 
 - Docker + Docker Compose v2
-- The VIB `vib-scanner` container needs `/var/run/docker.sock` mounted (included in `docker-compose.yml`)
+- `/var/run/docker.sock` mounted (included in `docker-compose.yml`) **or** `DOCKER_HOST=tcp://host:port` for a remote daemon
 
 ---
 
@@ -57,6 +57,7 @@ Copy `.env.example` to `.env` and adjust:
 | `IGNORE_UNFIXED` | `false` | Only report CVEs that have a fix available |
 | `TRIVY_TIMEOUT` | `300` | Trivy timeout per image (seconds) |
 | `ADDITIONAL_IMAGES` | — | Extra images to scan beyond running containers |
+| `DOCKER_HOST` | — | Remote Docker daemon (`tcp://host:port`); leave unset for local socket |
 | `AIB_BASE_URL` | — | AIB URL to feed critical/high findings into asset graph |
 | `AIB_API_TOKEN` | — | AIB API token |
 

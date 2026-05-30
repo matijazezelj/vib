@@ -5,6 +5,7 @@ services:
     container_name: vib-scanner
     restart: unless-stopped
     volumes:
+      # Remove this line when using DOCKER_HOST=tcp://... (remote daemon)
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - vib-trivy-cache:/root/.cache/trivy
     environment:
@@ -17,6 +18,7 @@ services:
       - ADDITIONAL_IMAGES=${ADDITIONAL_IMAGES:-}
       - AIB_BASE_URL=${AIB_BASE_URL:-}
       - AIB_API_TOKEN=${AIB_API_TOKEN:-}
+      - DOCKER_HOST=${DOCKER_HOST:-}
     networks:
       - vib
     depends_on:
