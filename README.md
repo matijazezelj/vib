@@ -38,7 +38,7 @@ The first scan starts immediately and completes in 5–15 minutes depending on i
 ## Requirements
 
 - Docker + Docker Compose v2
-- `/var/run/docker.sock` mounted (included in `docker-compose.yml`) **or** `DOCKER_HOST=tcp://host:port` for a remote daemon
+- `/var/run/docker.sock` mounted (included in `docker-compose.yml`) **or** `DOCKER_HOST` / `DOCKER_HOSTS` pointing at a remote daemon
 
 ---
 
@@ -48,7 +48,7 @@ Copy `.env.example` to `.env` and adjust:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `GRAFANA_ADMIN_PASSWORD` | auto-generated | Grafana admin password |
+| `GRAFANA_ADMIN_PASSWORD` | `changeme` | Grafana admin password — **set this before exposing Grafana** |
 | `GRAFANA_PORT` | `3001` | Host port for Grafana |
 | `VICTORIAMETRICS_PORT` | `8429` | Host port for VictoriaMetrics |
 | `SCAN_INTERVAL_HOURS` | `6` | How often to re-scan (hours) |
@@ -57,7 +57,9 @@ Copy `.env.example` to `.env` and adjust:
 | `IGNORE_UNFIXED` | `false` | Only report CVEs that have a fix available |
 | `TRIVY_TIMEOUT` | `300` | Trivy timeout per image (seconds) |
 | `ADDITIONAL_IMAGES` | — | Extra images to scan beyond running containers |
-| `DOCKER_HOST` | — | Remote Docker daemon (`tcp://host:port`); leave unset for local socket |
+| `DOCKER_HOST` | — | Single remote Docker daemon (`tcp://host:port`); leave unset for local socket |
+| `DOCKER_HOSTS` | — | Multiple daemons as `name=url` pairs, comma-separated; takes priority over `DOCKER_HOST` |
+| `BIND_ADDR` | `127.0.0.1` | Interface the Grafana/VictoriaMetrics ports bind to |
 | `AIB_BASE_URL` | — | AIB URL to feed critical/high findings into asset graph |
 | `AIB_API_TOKEN` | — | AIB API token |
 
@@ -69,10 +71,11 @@ VIB pushes these metrics to VictoriaMetrics (queryable as Prometheus):
 
 | Metric | Labels | Description |
 |--------|--------|-------------|
-| `vib_vulnerabilities_total` | `image`, `severity`, `has_fix` | CVE count per image/severity |
-| `vib_cve_info` | `image`, `cve_id`, `package`, `severity`, `has_fix` | One series per CVE (value = CVSS score) |
-| `vib_scan_timestamp` | `image` | Unix timestamp of last scan per image |
-| `vib_image_vulnerabilities_total` | `image` | Total CVE count per image |
+| `vib_vulnerabilities_total` | `image`, `severity`, `has_fix`, `host` | CVE count per image/severity |
+| `vib_cve_info` | `image`, `cve_id`, `package`, `severity`, `has_fix`, `host` | One series per CVE (value = CVSS score) |
+| `vib_scan_timestamp` | `image`, `host` | Unix timestamp of last scan per image |
+| `vib_image_vulnerabilities_total` | `image`, `host` | Total CVE count per image |
+| `vib_scan_errors_total` | `image`, `host` | Emitted (value `1`) when an image fails to scan or parse |
 | `vib_images_scanned_total` | — | Total images scanned in last run |
 | `vib_total_vulnerabilities` | — | Total CVEs found in last run |
 | `vib_last_scan_timestamp` | — | Unix timestamp of last full scan |

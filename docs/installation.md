@@ -16,7 +16,7 @@ cd vib
 cp .env.example .env
 ```
 
-Edit `.env` — at minimum set `GRAFANA_ADMIN_PASSWORD`. Leave everything else as defaults to get started.
+Edit `.env` — at minimum set `GRAFANA_ADMIN_PASSWORD`; it is not generated for you. Leave everything else as defaults to get started.
 
 ### 2. Start the stack
 

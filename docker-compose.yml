@@ -2,6 +2,7 @@ services:
 
   vib-scanner:
     build: ./scanner
+    image: vib-scanner:latest
     container_name: vib-scanner
     restart: unless-stopped
     volumes:
