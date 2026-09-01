@@ -44,12 +44,19 @@ try:
 except ValueError:
     logger.error("FATAL: SCAN_INTERVAL_HOURS must be a number, got %r", os.environ.get("SCAN_INTERVAL_HOURS"))
     sys.exit(1)
+if SCAN_INTERVAL_HOURS <= 0:
+    logger.error("FATAL: SCAN_INTERVAL_HOURS must be greater than 0, got %r", SCAN_INTERVAL_HOURS)
+    sys.exit(1)
 SCAN_ON_STARTUP = os.environ.get("SCAN_ON_STARTUP", "true").lower() == "true"
 SEVERITY_FILTER = os.environ.get("SEVERITY_FILTER", "UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL")
+SEVERITIES = [s.strip().upper() for s in SEVERITY_FILTER.split(",") if s.strip()]
 try:
     TRIVY_TIMEOUT = int(os.environ.get("TRIVY_TIMEOUT", "300"))
 except ValueError:
     logger.error("FATAL: TRIVY_TIMEOUT must be an integer, got %r", os.environ.get("TRIVY_TIMEOUT"))
+    sys.exit(1)
+if TRIVY_TIMEOUT <= 0:
+    logger.error("FATAL: TRIVY_TIMEOUT must be greater than 0, got %r", TRIVY_TIMEOUT)
     sys.exit(1)
 IGNORE_UNFIXED = os.environ.get("IGNORE_UNFIXED", "false").lower() == "true"
 
@@ -172,6 +179,23 @@ def extract_vulnerabilities(scan_result: dict) -> list[dict]:
     return vulns
 
 
+def dedupe_vulnerabilities(vulns: list[dict]) -> list[dict]:
+    """Drop repeated (cve_id, package, target) rows.
+
+    The same CVE can appear once per Result target; VictoriaMetrics keeps only one
+    sample per identical label set, so duplicates would silently collapse anyway.
+    """
+    seen = set()
+    unique = []
+    for v in vulns:
+        key = (v["cve_id"], v["package"], v["target"])
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(v)
+    return unique
+
+
 def _extract_cvss(v: dict) -> float:
     """Extract the highest CVSS score available."""
     cvss = v.get("CVSS") or {}
@@ -203,22 +227,13 @@ def push_metrics(image: str, vulns: list[dict], scan_ts: float, host: str = "loc
     lines = []
     ts_ms = int(scan_ts * 1000)
 
-    # De-duplicate by (cve_id, pkg_name, target) so VictoriaMetrics doesn't silently drop dupes
-    seen = set()
-    unique_vulns = []
+    # Seed every configured severity at 0 so a remediated CVE reports 0 instead of
+    # leaving the previous scan's count as the newest sample for that series.
+    severity_counts: dict[tuple, int] = {
+        (sev, has_fix): 0 for sev in SEVERITIES for has_fix in ("true", "false")
+    }
     for v in vulns:
-        key = (v["cve_id"], v["package"], v["target"])
-        if key in seen:
-            continue
-        seen.add(key)
-        unique_vulns.append(v)
-
-    # Aggregate counts by severity (from de-duplicated set)
-    severity_counts: dict[tuple, int] = {}
-    for v in unique_vulns:
-        sev = v["severity"]
-        has_fix = "true" if v["has_fix"] else "false"
-        key = (sev, has_fix)
+        key = (v["severity"], "true" if v["has_fix"] else "false")
         severity_counts[key] = severity_counts.get(key, 0) + 1
 
     safe_image = _safe_label(image)
@@ -226,15 +241,15 @@ def push_metrics(image: str, vulns: list[dict], scan_ts: float, host: str = "loc
 
     for (sev, has_fix), count in severity_counts.items():
         lines.append(
-            f'vib_vulnerabilities_total{{image="{safe_image}",severity="{sev}",'
+            f'vib_vulnerabilities_total{{image="{safe_image}",severity="{_safe_label(sev)}",'
             f'has_fix="{has_fix}",host="{safe_host}"}} {count} {ts_ms}'
         )
 
     # Per-CVE info metric (value = CVSS score or 1)
-    for v in unique_vulns:
+    for v in vulns:
         cve = _safe_label(v["cve_id"])
         pkg = _safe_label(v["package"])
-        sev = v["severity"]
+        sev = _safe_label(v["severity"])
         has_fix = "true" if v["has_fix"] else "false"
         score = v["cvss_score"] or 1.0
         lines.append(
@@ -243,7 +258,7 @@ def push_metrics(image: str, vulns: list[dict], scan_ts: float, host: str = "loc
         )
 
     lines.append(f'vib_scan_timestamp{{image="{safe_image}",host="{safe_host}"}} {scan_ts} {ts_ms}')
-    lines.append(f'vib_image_vulnerabilities_total{{image="{safe_image}",host="{safe_host}"}} {len(unique_vulns)} {ts_ms}')
+    lines.append(f'vib_image_vulnerabilities_total{{image="{safe_image}",host="{safe_host}"}} {len(vulns)} {ts_ms}')
 
     payload = "\n".join(lines)
     for attempt in range(2):
@@ -432,7 +447,6 @@ def run_scan() -> None:
             break
         logger.info("── Host: %s (%s) ──", host_name, docker_url or "local socket")
         images = discover_images(docker_url)
-        images = list(dict.fromkeys(images))
 
         if not images:
             logger.warning("No images on %s. Check socket/DOCKER_HOSTS or set ADDITIONAL_IMAGES.", host_name)
@@ -448,7 +462,7 @@ def run_scan() -> None:
                 continue
 
             try:
-                vulns = extract_vulnerabilities(result)
+                vulns = dedupe_vulnerabilities(extract_vulnerabilities(result))
             except Exception as e:
                 logger.error("Failed to extract vulnerabilities for %s: %s", image, e)
                 push_scan_error(image, host_name, scan_ts)
@@ -498,7 +512,7 @@ def run_scan() -> None:
                     continue
 
                 try:
-                    vulns = extract_vulnerabilities(result)
+                    vulns = dedupe_vulnerabilities(extract_vulnerabilities(result))
                 except Exception as e:
                     logger.error("Failed to extract vulnerabilities for %s: %s", image, e)
                     push_scan_error(image, "additional", scan_ts)
