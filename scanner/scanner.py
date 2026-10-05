@@ -72,6 +72,11 @@ ADDITIONAL_IMAGES = [
     if img.strip()
 ]
 
+# Per-image series that a later scan may stop emitting (image removed, CVE fixed). Their last
+# non-zero sample would otherwise keep counting inside every last_over_time() window.
+STALE_METRICS = ("vib_vulnerabilities_total", "vib_image_vulnerabilities_total", "vib_cve_info")
+STALE_LOOKBACK = "48h"
+
 
 # ── Multi-host parsing ────────────────────────────────────────────────────────
 
@@ -222,9 +227,17 @@ def _safe_label(value: str) -> str:
     )
 
 
-def push_metrics(image: str, vulns: list[dict], scan_ts: float, host: str = "local") -> None:
-    """Push scan results to VictoriaMetrics in Prometheus line format."""
+def _series_key(name: str, labels: dict) -> tuple:
+    return (name, tuple(sorted(labels.items())))
+
+
+def push_metrics(image: str, vulns: list[dict], scan_ts: float, host: str = "local") -> set:
+    """Push scan results to VictoriaMetrics in Prometheus line format.
+
+    Returns the keys of the per-image series written, for zero_stale_series().
+    """
     lines = []
+    emitted = set()
     ts_ms = int(scan_ts * 1000)
 
     # Seed every configured severity at 0 so a remediated CVE reports 0 instead of
@@ -240,6 +253,8 @@ def push_metrics(image: str, vulns: list[dict], scan_ts: float, host: str = "loc
     safe_host = _safe_label(host)
 
     for (sev, has_fix), count in severity_counts.items():
+        emitted.add(_series_key("vib_vulnerabilities_total",
+                                {"image": image, "severity": sev, "has_fix": has_fix, "host": host}))
         lines.append(
             f'vib_vulnerabilities_total{{image="{safe_image}",severity="{_safe_label(sev)}",'
             f'has_fix="{has_fix}",host="{safe_host}"}} {count} {ts_ms}'
@@ -252,6 +267,10 @@ def push_metrics(image: str, vulns: list[dict], scan_ts: float, host: str = "loc
         sev = _safe_label(v["severity"])
         has_fix = "true" if v["has_fix"] else "false"
         score = v["cvss_score"] or 1.0
+        emitted.add(_series_key("vib_cve_info", {
+            "image": image, "cve_id": v["cve_id"], "package": v["package"],
+            "severity": v["severity"], "has_fix": has_fix, "host": host,
+        }))
         lines.append(
             f'vib_cve_info{{image="{safe_image}",cve_id="{cve}",package="{pkg}",'
             f'severity="{sev}",has_fix="{has_fix}",host="{safe_host}"}} {score} {ts_ms}'
@@ -259,6 +278,7 @@ def push_metrics(image: str, vulns: list[dict], scan_ts: float, host: str = "loc
 
     lines.append(f'vib_scan_timestamp{{image="{safe_image}",host="{safe_host}"}} {scan_ts} {ts_ms}')
     lines.append(f'vib_image_vulnerabilities_total{{image="{safe_image}",host="{safe_host}"}} {len(vulns)} {ts_ms}')
+    emitted.add(_series_key("vib_image_vulnerabilities_total", {"image": image, "host": host}))
 
     payload = "\n".join(lines)
     for attempt in range(2):
@@ -274,10 +294,10 @@ def push_metrics(image: str, vulns: list[dict], scan_ts: float, host: str = "loc
                     "Failed to push metrics for %s: HTTP %d (not retrying 4xx): %s",
                     image, resp.status_code, resp.text[:300],
                 )
-                return
+                return emitted
             resp.raise_for_status()
             logger.info("Pushed %d metric lines for %s", len(lines), image)
-            return
+            return emitted
         except requests.exceptions.ConnectionError as e:
             if attempt == 0:
                 time.sleep(2)
@@ -296,7 +316,8 @@ def push_metrics(image: str, vulns: list[dict], scan_ts: float, host: str = "loc
                 logger.error("Failed to push metrics for %s after retry: %s", image, e)
         except Exception as e:
             logger.error("Failed to push metrics for %s: %s", image, e)
-            return
+            return emitted
+    return emitted
 
 
 def push_scan_error(image: str, host: str, scan_ts: float) -> None:
@@ -321,6 +342,57 @@ def push_scan_error(image: str, host: str, scan_ts: float) -> None:
         resp.raise_for_status()
     except Exception as e:
         logger.warning("Failed to push scan error metric for %s: %s", image, e)
+
+
+def zero_stale_series(emitted: set, scanned_hosts: set, failed: set, scan_ts: float) -> None:
+    """Write 0 for per-image series an earlier scan wrote and this one did not.
+
+    Previous series are read back from VictoriaMetrics rather than kept in memory, so this
+    also works on the first scan after a restart. Series on a host that was not scanned, or
+    for an image whose scan failed, keep their last value: no result is not a clean result.
+    """
+    ts_ms = int(scan_ts * 1000)
+    lines = []
+    for name in STALE_METRICS:
+        try:
+            resp = requests.get(
+                f"{VICTORIAMETRICS_URL}/api/v1/query",
+                params={"query": f"last_over_time({name}[{STALE_LOOKBACK}]) > 0"},
+                timeout=30,
+            )
+            resp.raise_for_status()
+            result = resp.json()["data"]["result"]
+        except Exception as e:
+            logger.warning("Skipping stale-series cleanup, could not read %s: %s", name, e)
+            return
+        for series in result:
+            labels = {k: v for k, v in series["metric"].items() if k != "__name__"}
+            host, image = labels.get("host"), labels.get("image")
+            if host not in scanned_hosts or (image, host) in failed:
+                continue
+            if _series_key(name, labels) in emitted:
+                continue
+            label_str = ",".join(f'{k}="{_safe_label(v)}"' for k, v in sorted(labels.items()))
+            lines.append(f"{name}{{{label_str}}} 0 {ts_ms}")
+
+    if not lines:
+        return
+    for attempt in range(2):
+        try:
+            resp = requests.post(
+                f"{VICTORIAMETRICS_URL}/api/v1/import/prometheus",
+                data="\n".join(lines),
+                headers={"Content-Type": "text/plain"},
+                timeout=30,
+            )
+            resp.raise_for_status()
+            logger.info("Zeroed %d series no longer reported by this scan", len(lines))
+            return
+        except Exception as e:
+            if attempt == 0:
+                time.sleep(2)
+            else:
+                logger.error("Failed to zero stale series: %s", e)
 
 
 def push_scan_summary(images_scanned: int, total_vulns: int, scan_ts: float) -> None:
@@ -440,6 +512,9 @@ def run_scan() -> None:
 
     total_vulns = 0
     images_scanned = 0
+    emitted: set = set()
+    scanned_hosts: set = set()
+    failed: set = set()
 
     for host_name, docker_url in hosts:
         if _shutdown.is_set():
@@ -451,6 +526,7 @@ def run_scan() -> None:
         if not images:
             logger.warning("No images on %s. Check socket/DOCKER_HOSTS or set ADDITIONAL_IMAGES.", host_name)
             continue
+        scanned_hosts.add(host_name)
 
         for image in images:
             if _shutdown.is_set():
@@ -459,6 +535,7 @@ def run_scan() -> None:
             result = scan_image(image, docker_url)
             if result is None:
                 push_scan_error(image, host_name, scan_ts)
+                failed.add((image, host_name))
                 continue
 
             try:
@@ -466,12 +543,13 @@ def run_scan() -> None:
             except Exception as e:
                 logger.error("Failed to extract vulnerabilities for %s: %s", image, e)
                 push_scan_error(image, host_name, scan_ts)
+                failed.add((image, host_name))
                 continue
 
             total_vulns += len(vulns)
             images_scanned += 1
 
-            push_metrics(image, vulns, scan_ts, host=host_name)
+            emitted |= push_metrics(image, vulns, scan_ts, host=host_name)
             report_to_aib(image, vulns)
 
             crit = sum(1 for v in vulns if v["severity"] == "CRITICAL")
@@ -502,6 +580,7 @@ def run_scan() -> None:
 
         if not skip_additional:
             logger.info("── Host: additional (extra images) ──")
+            scanned_hosts.add("additional")
             for image in ADDITIONAL_IMAGES:
                 if _shutdown.is_set():
                     logger.info("Shutdown requested, aborting scan loop.")
@@ -509,6 +588,7 @@ def run_scan() -> None:
                 result = scan_image(image, additional_docker_url)
                 if result is None:
                     push_scan_error(image, "additional", scan_ts)
+                    failed.add((image, "additional"))
                     continue
 
                 try:
@@ -516,17 +596,22 @@ def run_scan() -> None:
                 except Exception as e:
                     logger.error("Failed to extract vulnerabilities for %s: %s", image, e)
                     push_scan_error(image, "additional", scan_ts)
+                    failed.add((image, "additional"))
                     continue
 
                 total_vulns += len(vulns)
                 images_scanned += 1
 
-                push_metrics(image, vulns, scan_ts, host="additional")
+                emitted |= push_metrics(image, vulns, scan_ts, host="additional")
                 report_to_aib(image, vulns)
 
                 crit = sum(1 for v in vulns if v["severity"] == "CRITICAL")
                 high = sum(1 for v in vulns if v["severity"] == "HIGH")
                 logger.info("  %s — %d vulns (%d critical, %d high)", image, len(vulns), crit, high)
+
+    # An interrupted scan did not see every image, so it cannot tell which ones are gone.
+    if not _shutdown.is_set():
+        zero_stale_series(emitted, scanned_hosts, failed, scan_ts)
 
     push_scan_summary(images_scanned, total_vulns, scan_ts)
     logger.info("─── Scan complete: %d images across %d host(s), %d vulnerabilities ───",
