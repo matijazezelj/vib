@@ -128,7 +128,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "vib-vm" },
-          "expr": "vib_last_scan_timestamp * 1000",
+          "expr": "last_over_time(vib_last_scan_timestamp[7d]) * 1000",
           "legendFormat": "Last Scan",
           "refId": "A"
         }
@@ -159,25 +159,25 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "vib-vm" },
-          "expr": "sum(vib_vulnerabilities_total{severity=\"CRITICAL\"}) by (severity)",
+          "expr": "sum(last_over_time(vib_vulnerabilities_total{severity=\"CRITICAL\"}[8h])) by (severity)",
           "legendFormat": "CRITICAL",
           "refId": "A"
         },
         {
           "datasource": { "type": "prometheus", "uid": "vib-vm" },
-          "expr": "sum(vib_vulnerabilities_total{severity=\"HIGH\"}) by (severity)",
+          "expr": "sum(last_over_time(vib_vulnerabilities_total{severity=\"HIGH\"}[8h])) by (severity)",
           "legendFormat": "HIGH",
           "refId": "B"
         },
         {
           "datasource": { "type": "prometheus", "uid": "vib-vm" },
-          "expr": "sum(vib_vulnerabilities_total{severity=\"MEDIUM\"}) by (severity)",
+          "expr": "sum(last_over_time(vib_vulnerabilities_total{severity=\"MEDIUM\"}[8h])) by (severity)",
           "legendFormat": "MEDIUM",
           "refId": "C"
         },
         {
           "datasource": { "type": "prometheus", "uid": "vib-vm" },
-          "expr": "sum(vib_vulnerabilities_total{severity=\"LOW\"}) by (severity)",
+          "expr": "sum(last_over_time(vib_vulnerabilities_total{severity=\"LOW\"}[8h])) by (severity)",
           "legendFormat": "LOW",
           "refId": "D"
         }
@@ -256,7 +256,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "vib-vm" },
-          "expr": "sum(last_over_time(vib_image_vulnerabilities_total[8h])) by (image)",
+          "expr": "sum(last_over_time(vib_image_vulnerabilities_total[8h])) by (image) > 0",
           "format": "table",
           "instant": true,
           "legendFormat": "Total",
@@ -264,7 +264,7 @@
         },
         {
           "datasource": { "type": "prometheus", "uid": "vib-vm" },
-          "expr": "sum(last_over_time(vib_vulnerabilities_total{severity=\"CRITICAL\"}[8h])) by (image)",
+          "expr": "sum(last_over_time(vib_vulnerabilities_total{severity=\"CRITICAL\"}[8h])) by (image) and on(image) sum(last_over_time(vib_image_vulnerabilities_total[8h])) by (image) > 0",
           "format": "table",
           "instant": true,
           "legendFormat": "Critical",
@@ -272,7 +272,7 @@
         },
         {
           "datasource": { "type": "prometheus", "uid": "vib-vm" },
-          "expr": "sum(last_over_time(vib_vulnerabilities_total{severity=\"HIGH\"}[8h])) by (image)",
+          "expr": "sum(last_over_time(vib_vulnerabilities_total{severity=\"HIGH\"}[8h])) by (image) and on(image) sum(last_over_time(vib_image_vulnerabilities_total[8h])) by (image) > 0",
           "format": "table",
           "instant": true,
           "legendFormat": "High",
@@ -317,7 +317,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "vib-vm" },
-          "expr": "last_over_time(vib_cve_info{severity=~\"CRITICAL|HIGH\"}[8h])",
+          "expr": "last_over_time(vib_cve_info{severity=~\"CRITICAL|HIGH\"}[8h]) > 0",
           "format": "table",
           "instant": true,
           "legendFormat": "",
