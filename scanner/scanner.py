@@ -122,8 +122,21 @@ def _docker_client(docker_url: str) -> docker.DockerClient:
 
 # ── Trivy scanning ───────────────────────────────────────────────────────────
 
+def _registry_ref(image: str, docker_url: str) -> Optional[str]:
+    """The image's registry digest, so a remote scan reads the bytes the host runs."""
+    try:
+        digests = _docker_client(docker_url).images.get(image).attrs.get("RepoDigests") or []
+        return digests[0] if digests else None
+    except Exception:
+        return None
+
+
 def scan_image(image: str, docker_url: str = "") -> Optional[dict]:
-    """Run trivy against an image, return parsed JSON or None on failure."""
+    """Run trivy against an image, return parsed JSON or None on failure.
+
+    Some daemons export an image with a layer blob missing, which fails every scan of it
+    (exit 1, empty output); the same digest pulled from its registry scans fine.
+    """
     cmd = [
         "trivy", "image",
         "--format", "json",
@@ -131,21 +144,21 @@ def scan_image(image: str, docker_url: str = "") -> Optional[dict]:
         "--severity", SEVERITY_FILTER,
         "--quiet",
     ]
-    if docker_url:
-        cmd.extend(["--docker-host", docker_url])
     if IGNORE_UNFIXED:
         cmd.append("--ignore-unfixed")
-    cmd.append(image)
+    host = ["--docker-host", docker_url] if docker_url else []
 
     logger.info("Scanning %s", image)
     try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=TRIVY_TIMEOUT + 30,
-        )
-        if result.returncode not in (0, 1):  # trivy exits 1 when vulns found
+        result = subprocess.run(cmd + host + [image], capture_output=True, text=True, timeout=TRIVY_TIMEOUT + 30)
+        if result.returncode != 0 or not result.stdout:
+            ref = _registry_ref(image, docker_url)
+            if ref:
+                logger.warning("Trivy exited %d for %s, retrying from registry as %s: %s",
+                               result.returncode, image, ref, result.stderr[:300])
+                result = subprocess.run(cmd + ["--image-src", "remote", ref],
+                                        capture_output=True, text=True, timeout=TRIVY_TIMEOUT + 30)
+        if result.returncode != 0 or not result.stdout:
             logger.warning("Trivy exited %d for %s: %s", result.returncode, image, result.stderr[:300])
             return None
         return json.loads(result.stdout)

@@ -11,6 +11,9 @@ All notable changes to VIB are documented here.
   their last values. The tables hide zero rows.
 - The trend graph queried the bare series, so its legend disagreed with the stat tiles (CRITICAL 100 against 240). It now uses the same `last_over_time`
   as the tiles, and "Last Scan" holds its value between scans.
+- Docker on one host exports `gotenberg/gotenberg` with a layer blob missing, so Trivy exited 1 with no output on every scan and the image was never scanned.
+  A failed daemon scan is now retried against the same digest from the registry (`--image-src remote`), and exit 1 is no longer accepted: without
+  `--exit-code`, Trivy exits 0 even when it finds vulnerabilities.
 
 ## [0.1.0] — 2026-05-29
 
