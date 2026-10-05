@@ -6,7 +6,8 @@ services:
     container_name: vib-scanner
     restart: unless-stopped
     volumes:
-      # Remove this line when using DOCKER_HOST=tcp://... (remote daemon)
+      # Remove this line when using DOCKER_HOST(S)=tcp://... (remote daemon or read-only proxy).
+      # `:ro` makes the socket file read-only, NOT the API behind it: this is still root on the host.
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - vib-trivy-cache:/root/.cache/trivy
     environment:
@@ -27,7 +28,7 @@ services:
       - vib-victoriametrics
 
   vib-victoriametrics:
-    image: victoriametrics/victoria-metrics:latest
+    image: victoriametrics/victoria-metrics:${VICTORIAMETRICS_TAG:-v1.153.0}
     container_name: vib-victoriametrics
     restart: unless-stopped
     ports:
@@ -42,14 +43,14 @@ services:
       - vib
 
   vib-grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:${GRAFANA_TAG:-13.2.3}
     container_name: vib-grafana
     restart: unless-stopped
     ports:
       - "${BIND_ADDR:-127.0.0.1}:${GRAFANA_PORT:-3001}:3000"
     environment:
       - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-changeme}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD is not set; copy .env.example to .env and set it}
       - GF_USERS_ALLOW_SIGN_UP=false
       - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/etc/grafana/dashboards/vib-overview.json
     volumes:
